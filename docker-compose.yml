@@ -1,0 +1,20 @@
+# Development database only. Not a production deployment recipe.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: synckit
+      POSTGRES_PASSWORD: synckit_dev_only
+      POSTGRES_DB: synckit
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synckit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - synckit-pgdata:/var/lib/postgresql/data
+
+volumes:
+  synckit-pgdata:

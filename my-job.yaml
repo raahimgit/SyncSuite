@@ -1,0 +1,48 @@
+# SyncSuite Job Specification
+# Schema: PostgreSQL -> PostgreSQL Replica
+version: 1
+name: sync-orders-replica
+description: Incremental sync of orders table to analytical PostgreSQL replica
+
+source:
+  type: postgres
+  config:
+    connectionString:
+      $env: SOURCE_DATABASE_URL
+    table: orders
+    keyColumn: id
+    cursorColumn: updated_at
+    batchSize: 200
+    safetyLagMs: 5000
+
+destination:
+  type: postgres
+  config:
+    connectionString:
+      $env: REPLICA_DATABASE_URL
+    table: orders_replica
+    keyColumn: id
+
+transform:
+  - op: set
+    field: replicated_at
+    value: current_timestamp
+
+validation:
+  fields:
+    id:
+      type: string
+      required: true
+    total_cents:
+      type: number
+
+retry:
+  maxAttempts: 4
+  baseDelayMs: 500
+  maxDelayMs: 15000
+  jitter: full
+
+circuitBreaker:
+  maxConsecutiveFailures: 20
+
+onRecordFailure: dead_letter

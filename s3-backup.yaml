@@ -1,0 +1,44 @@
+# SyncSuite Job Specification
+# Schema: PostgreSQL -> S3 / Cloudflare R2 / MinIO
+version: 1
+name: sync-orders-to-s3
+description: Archive PostgreSQL orders to S3 cloud storage as JSON/NDJSON
+
+source:
+  type: postgres
+  config:
+    connectionString:
+      $env: SOURCE_DATABASE_URL
+    table: orders
+    keyColumn: id
+    cursorColumn: updated_at
+    batchSize: 500
+    safetyLagMs: 5000
+
+destination:
+  type: s3
+  config:
+    bucket: my-data-lake
+    region: us-east-1
+    prefix: orders/
+    accessKeyId:
+      $env: AWS_ACCESS_KEY_ID
+    secretAccessKey:
+      $env: AWS_SECRET_ACCESS_KEY
+    format: json
+
+transform:
+  - op: set
+    field: archived_at
+    value: current_timestamp
+
+retry:
+  maxAttempts: 5
+  baseDelayMs: 500
+  maxDelayMs: 30000
+  jitter: full
+
+circuitBreaker:
+  maxConsecutiveFailures: 20
+
+onRecordFailure: dead_letter

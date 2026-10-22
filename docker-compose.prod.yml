@@ -1,0 +1,39 @@
+# Production deployment stack for SyncSuite
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3000
+      - SYNCKIT_DATABASE_URL=postgres://syncsuite:change_me_in_production@postgres:5432/syncsuite
+      - SYNCKIT_SCHEMA=synckit
+      - LOG_LEVEL=info
+      # Set API Bearer token for production
+      - SYNCKIT_API_TOKEN=${SYNCKIT_API_TOKEN:-production_token_secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: syncsuite
+      POSTGRES_PASSWORD: change_me_in_production
+      POSTGRES_DB: syncsuite
+    volumes:
+      - syncsuite-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U syncsuite"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  syncsuite-pgdata:
