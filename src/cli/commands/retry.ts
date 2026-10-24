@@ -1,4 +1,4 @@
-import { createCliContext } from "../config.js";
+import { createCliContext, type CliContext } from "../config.js";
 import { ExitCodes, type ExitCode } from "../exit-codes.js";
 import type { RunResult } from "../../core/runner.js";
 
@@ -11,8 +11,9 @@ export interface RetryCliOptions {
 }
 
 export async function runRetry(jobName: string, options: RetryCliOptions): Promise<ExitCode> {
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     const ids = options.id ? [options.id] : undefined;
     const limit = options.limit ? Number(options.limit) : undefined;
 
@@ -37,10 +38,10 @@ export async function runRetry(jobName: string, options: RetryCliOptions): Promi
 
     return failed > 0 ? ExitCodes.PARTIAL : ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Retry error: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Retry error:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }
 

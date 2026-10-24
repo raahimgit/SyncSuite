@@ -1,4 +1,4 @@
-import { createCliContext } from "../config.js";
+import { createCliContext, type CliContext } from "../config.js";
 import { ExitCodes, type ExitCode } from "../exit-codes.js";
 import { validateJobFile } from "./validate.js";
 
@@ -9,8 +9,9 @@ export interface JobsCliOptions {
 }
 
 export async function runJobsList(options: JobsCliOptions): Promise<ExitCode> {
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     const jobs = await ctx.store.listJobs();
     if (options.json) {
       console.log(JSON.stringify(jobs, null, 2));
@@ -34,16 +35,17 @@ export async function runJobsList(options: JobsCliOptions): Promise<ExitCode> {
     }
     return ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Failed to list jobs: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Failed to list jobs:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }
 
 export async function runJobsShow(name: string, options: JobsCliOptions): Promise<ExitCode> {
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     const job = await ctx.store.getJobByIdOrName(name);
     if (!job) {
       console.error(`Job '${name}' not found.`);
@@ -64,10 +66,10 @@ export async function runJobsShow(name: string, options: JobsCliOptions): Promis
     }
     return ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Failed to show job: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Failed to show job:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }
 
@@ -87,8 +89,9 @@ export async function runJobsApply(filePath: string, options: JobsCliOptions): P
     }
   }
 
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     const res = await ctx.store.upsertJob(report.spec);
     if (options.json) {
       console.log(JSON.stringify(res, null, 2));
@@ -99,16 +102,17 @@ export async function runJobsApply(filePath: string, options: JobsCliOptions): P
     }
     return ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Failed to apply job: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Failed to apply job:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }
 
 export async function runJobsDelete(nameOrId: string, options: JobsCliOptions): Promise<ExitCode> {
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     const deleted = await ctx.store.deleteJob(nameOrId);
     if (!deleted) {
       console.error(`Job '${nameOrId}' not found.`);
@@ -121,9 +125,9 @@ export async function runJobsDelete(nameOrId: string, options: JobsCliOptions): 
     }
     return ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Failed to delete job: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Failed to delete job:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }

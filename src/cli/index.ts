@@ -12,7 +12,14 @@ import { runRetry } from "./commands/retry.js";
 import { runLogs } from "./commands/logs.js";
 import { startApiServer } from "../api/server.js";
 
+
 const program = new Command();
+
+process.on("unhandledRejection", (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  console.error(`\n${message}`);
+  process.exit(ExitCodes.ERROR);
+});
 
 program
   .name("syncsuite")

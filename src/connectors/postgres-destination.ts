@@ -3,8 +3,7 @@ import { SyncError } from "../core/types.js";
 import type { DestinationConnector, PlannedWrite, WriteRequest, WriteResult } from "../core/types.js";
 import { resolveSecret } from "./secrets.js";
 import { classifyPgError, quoteIdentifier } from "./sql-utils.js";
-
-const { Pool } = pg;
+import { createPool } from "../db/pool.js";
 
 export interface PostgresDestinationConfig {
   connectionString: unknown;
@@ -40,8 +39,8 @@ export class PostgresDestination implements DestinationConnector {
     }
 
     const connectionString = resolveSecret(this.config.connectionString, "connectionString");
-    this.pool = new Pool({
-      connectionString,
+    this.pool = createPool({
+      config: connectionString,
       max: 5,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,

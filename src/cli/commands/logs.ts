@@ -1,4 +1,4 @@
-import { createCliContext } from "../config.js";
+import { createCliContext, type CliContext } from "../config.js";
 import { ExitCodes, type ExitCode } from "../exit-codes.js";
 
 export interface LogsCliOptions {
@@ -10,8 +10,9 @@ export interface LogsCliOptions {
 }
 
 export async function runLogs(runId: string, options: LogsCliOptions): Promise<ExitCode> {
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     const limit = options.limit ? Number(options.limit) : 100;
     const events = await ctx.store.listEvents(runId, limit);
 
@@ -37,9 +38,9 @@ export async function runLogs(runId: string, options: LogsCliOptions): Promise<E
 
     return ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Failed to retrieve logs: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Failed to retrieve logs:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }

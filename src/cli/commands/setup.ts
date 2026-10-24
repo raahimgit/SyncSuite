@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runInit } from "./init.js";
 import { ExitCodes } from "../exit-codes.js";
+import { probeAndResolveDatabaseUrl, maskDatabaseUrl } from "../env-probe.js";
 
 export interface SetupOptions {
   /** Job template to scaffold (default: postgres-to-postgres) */
@@ -57,21 +58,18 @@ function skip(msg: string, quiet: boolean) {
 // ─── Step 0: detect DATABASE_URL ─────────────────────────────────────────────
 
 /**
- * Returns the detected DATABASE_URL variable name from the current environment.
- * SyncSuite reads DATABASE_URL, SYNCSUITE_DATABASE_URL, or SYNCKIT_DATABASE_URL.
- * Returns null if none are set.
+ * Probes the project for a DATABASE_URL using the shared env-probe module.
+ * Checks process.env, .env files, and common source config files.
+ * Returns a masked summary for display, or null if nothing is found.
  */
-function detectDatabaseUrl(): { varName: string; masked: string } | null {
-  const candidates = ["DATABASE_URL", "SYNCSUITE_DATABASE_URL", "SYNCKIT_DATABASE_URL"];
-  for (const name of candidates) {
-    const val = process.env[name];
-    if (val) {
-      // Mask credentials: postgresql://user:PASS@host:port/db → postgresql://****@host:port/db
-      const masked = val.replace(/:\/\/[^@]+@/, "://****@");
-      return { varName: name, masked };
-    }
-  }
-  return null;
+function detectDatabaseUrl(cwd: string): { varName?: string; masked: string; source: string } | null {
+  const result = probeAndResolveDatabaseUrl(undefined, cwd);
+  if (!result) return null;
+  return {
+    varName: result.varName,
+    masked: maskDatabaseUrl(result.url),
+    source: result.source,
+  };
 }
 
 // ─── Step 1: job spec ────────────────────────────────────────────────────────
@@ -226,19 +224,22 @@ export function runSetup(opts: SetupOptions, cwd = process.cwd()): number {
   log("", opts.quiet);
 
   // Detect DATABASE_URL before doing anything
-  const detected = detectDatabaseUrl();
+  const detected = detectDatabaseUrl(cwd);
   if (detected) {
-    ok(`DATABASE_URL detected (${detected.varName}=${detected.masked})`, opts.quiet);
+    const label = detected.varName ? `${detected.varName}` : "DATABASE_URL";
+    ok(`${label} detected from ${detected.source} (${detected.masked})`, opts.quiet);
   } else {
-    warn("DATABASE_URL is not set in the current environment.");
+    warn("DATABASE_URL is not set.");
     log("", opts.quiet);
-    log("  Set it in your platform's environment settings:", opts.quiet);
-    log("    Vercel  → Project Settings → Environment Variables", opts.quiet);
-    log("    Railway → Service → Variables", opts.quiet);
-    log("    Render  → Service → Environment", opts.quiet);
-    log("    Local   → create a .env file with: DATABASE_URL=postgresql://...", opts.quiet);
+    log("  SyncSuite searched:", opts.quiet);
+    log("    • SYNCSUITE_DATABASE_URL / DATABASE_URL environment variables", opts.quiet);
+    log("    • .env, .env.local, .env.production in project root", opts.quiet);
+    log("    • src/env.ts, src/config.ts, src/db.ts and other config files", opts.quiet);
     log("", opts.quiet);
-    log("  SyncSuite reads DATABASE_URL at runtime — you never paste it here.", opts.quiet);
+    log("  To fix: set DATABASE_URL in your environment or .env file:", opts.quiet);
+    log("    DATABASE_URL=postgresql://user:pass@host:5432/dbname", opts.quiet);
+    log("", opts.quiet);
+    log("  SyncSuite reads DATABASE_URL at runtime — it is never stored.", opts.quiet);
     log("", opts.quiet);
   }
 

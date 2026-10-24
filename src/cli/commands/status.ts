@@ -1,4 +1,4 @@
-import { createCliContext } from "../config.js";
+import { createCliContext, type CliContext } from "../config.js";
 import { ExitCodes, type ExitCode } from "../exit-codes.js";
 
 export interface StatusCliOptions {
@@ -8,8 +8,9 @@ export interface StatusCliOptions {
 }
 
 export async function runStatus(jobName?: string, options: StatusCliOptions = {}): Promise<ExitCode> {
-  const ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
+  let ctx: CliContext | undefined;
   try {
+    ctx = await createCliContext({ dbUrl: options.db, schema: options.schema });
     if (jobName) {
       const job = await ctx.store.getJobByIdOrName(jobName);
       if (!job) {
@@ -81,11 +82,12 @@ export async function runStatus(jobName?: string, options: StatusCliOptions = {}
       return ExitCodes.SUCCESS;
     }
 
+    const store = ctx.store;
     const summaries = await Promise.all(
       jobs.map(async (job) => {
         const [runs, dl] = await Promise.all([
-          ctx.store.listRuns(job.id, 1),
-          ctx.store.listDeadLetters(job.id, { state: "open", limit: 1 }),
+          store.listRuns(job.id, 1),
+          store.listDeadLetters(job.id, { state: "open", limit: 1 }),
         ]);
         return {
           name: job.name,
@@ -111,9 +113,9 @@ export async function runStatus(jobName?: string, options: StatusCliOptions = {}
 
     return ExitCodes.SUCCESS;
   } catch (err) {
-    console.error(`Failed to get status: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`Failed to get status:\n${err instanceof Error ? err.message : String(err)}`);
     return ExitCodes.ERROR;
   } finally {
-    await ctx.close().catch(() => {});
+    await ctx?.close().catch(() => {});
   }
 }

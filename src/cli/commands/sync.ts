@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { createCliContext } from "../config.js";
+import { createCliContext, type CliContext } from "../config.js";
 import { ExitCodes, type ExitCode } from "../exit-codes.js";
 import { validateJobFile } from "./validate.js";
 import type { RunResult } from "../../core/runner.js";
@@ -55,13 +55,24 @@ export async function runSync(jobOrFile: string, options: SyncCliOptions): Promi
         },
       };
 
-  const ctx = await createCliContext(
-    {
-      dbUrl: options.db,
-      schema: options.schema,
-    },
-    logger,
-  );
+  let ctx: CliContext;
+  try {
+    ctx = await createCliContext(
+      {
+        dbUrl: options.db,
+        schema: options.schema,
+      },
+      logger,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (options.json) {
+      console.error(JSON.stringify({ error: msg }, null, 2));
+    } else {
+      console.error(`Sync error:\n${msg}`);
+    }
+    return ExitCodes.ERROR;
+  }
 
   if (!options.json && !isSilent && !isErrorOnly) {
     console.log(`[SyncSuite] Connected to database (schema: ${ctx.schema})`);

@@ -3,8 +3,7 @@ import { SyncError } from "../core/types.js";
 import type { Cursor, ReadBatch, SourceConnector, SourceRecord } from "../core/types.js";
 import { resolveSecret } from "./secrets.js";
 import { classifyPgError, quoteIdentifier } from "./sql-utils.js";
-
-const { Pool } = pg;
+import { createPool } from "../db/pool.js";
 
 export interface PostgresSourceConfig {
   connectionString: unknown;
@@ -52,8 +51,8 @@ export class PostgresSource implements SourceConnector {
     }
 
     const connectionString = resolveSecret(this.config.connectionString, "connectionString");
-    this.pool = new Pool({
-      connectionString,
+    this.pool = createPool({
+      config: connectionString,
       max: 5,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
