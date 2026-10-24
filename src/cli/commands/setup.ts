@@ -20,9 +20,10 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { runInit } from "./init.js";
+import { runInit, type DynamicTableConfig } from "./init.js";
 import { ExitCodes } from "../exit-codes.js";
 import { probeAndResolveDatabaseUrl, maskDatabaseUrl } from "../env-probe.js";
+import { discoverDatabaseTables } from "../table-discovery.js";
 
 export interface SetupOptions {
   /** Job template to scaffold (default: postgres-to-postgres) */
@@ -62,19 +63,24 @@ function skip(msg: string, quiet: boolean) {
  * Checks process.env, .env files, and common source config files.
  * Returns a masked summary for display, or null if nothing is found.
  */
-function detectDatabaseUrl(cwd: string): { varName?: string; masked: string; source: string } | null {
+function detectDatabaseUrl(cwd: string): { varName?: string; masked: string; source: string; rawUrl: string } | null {
   const result = probeAndResolveDatabaseUrl(undefined, cwd);
   if (!result) return null;
   return {
     varName: result.varName,
     masked: maskDatabaseUrl(result.url),
     source: result.source,
+    rawUrl: result.url,
   };
 }
 
 // ─── Step 1: job spec ────────────────────────────────────────────────────────
 
-function scaffoldJobSpec(opts: SetupOptions, cwd: string): boolean {
+function scaffoldJobSpec(
+  opts: SetupOptions,
+  cwd: string,
+  tableConfig?: DynamicTableConfig,
+): boolean {
   const dest = path.resolve(cwd, opts.jobFile);
 
   if (fs.existsSync(dest) && !opts.force) {
@@ -83,8 +89,17 @@ function scaffoldJobSpec(opts: SetupOptions, cwd: string): boolean {
   }
 
   try {
-    runInit(dest, { template: opts.template, format: "yaml", force: opts.force });
-    ok(`Created ${opts.jobFile}`, opts.quiet);
+    runInit(dest, {
+      template: opts.template,
+      format: "yaml",
+      force: opts.force,
+      tableConfig,
+    });
+    if (tableConfig?.table) {
+      ok(`Created ${opts.jobFile} (configured for '${tableConfig.table}' → '${tableConfig.table}_replica')`, opts.quiet);
+    } else {
+      ok(`Created ${opts.jobFile}`, opts.quiet);
+    }
     return true;
   } catch (err) {
     warn(`Could not create ${opts.jobFile}: ${err instanceof Error ? err.message : String(err)}`);
@@ -217,17 +232,40 @@ function injectPackageScripts(opts: SetupOptions, cwd: string): boolean {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export function runSetup(opts: SetupOptions, cwd = process.cwd()): number {
+export async function runSetup(opts: SetupOptions, cwd = process.cwd()): Promise<number> {
   log("", opts.quiet);
   log("SyncSuite Setup", opts.quiet);
   log("═══════════════", opts.quiet);
   log("", opts.quiet);
+
+  let tableConfig: DynamicTableConfig | undefined;
 
   // Detect DATABASE_URL before doing anything
   const detected = detectDatabaseUrl(cwd);
   if (detected) {
     const label = detected.varName ? `${detected.varName}` : "DATABASE_URL";
     ok(`${label} detected from ${detected.source} (${detected.masked})`, opts.quiet);
+
+    // Intelligently discover actual database tables
+    try {
+      const { tables, allTableNames } = await discoverDatabaseTables(detected.rawUrl);
+      if (tables.length > 0) {
+        const best = tables[0]!;
+        const previewList =
+          allTableNames.slice(0, 4).join(", ") +
+          (allTableNames.length > 4 ? ` (+${allTableNames.length - 4} more)` : "");
+        ok(`Discovered ${allTableNames.length} application table${allTableNames.length === 1 ? "" : "s"}: ${previewList}`, opts.quiet);
+        tableConfig = {
+          table: best.name,
+          keyColumn: best.primaryKeyColumn,
+          cursorColumn: best.cursorColumn,
+          dbVarName: detected.varName ?? "DATABASE_URL",
+          allTables: allTableNames,
+        };
+      }
+    } catch {
+      // Non-fatal: if discovery times out or fails, fallback to template
+    }
   } else {
     warn("DATABASE_URL is not set.");
     log("", opts.quiet);
@@ -243,7 +281,7 @@ export function runSetup(opts: SetupOptions, cwd = process.cwd()): number {
     log("", opts.quiet);
   }
 
-  scaffoldJobSpec(opts, cwd);
+  scaffoldJobSpec(opts, cwd, tableConfig);
   scaffoldEnvExample(opts, cwd, detected !== null);
 
   if (opts.injectScripts) {
@@ -258,7 +296,7 @@ export function runSetup(opts: SetupOptions, cwd = process.cwd()): number {
     log("  0. Set DATABASE_URL in your environment (see above)", opts.quiet);
   }
 
-  log(`  ${detected ? "1" : "2"}. Edit ${opts.jobFile} to match your source and destination`, opts.quiet);
+  log(`  ${detected ? "1" : "2"}. Review ${opts.jobFile} (configured to replicate your database table)`, opts.quiet);
   log(`  ${detected ? "2" : "3"}. npm run syncsuite:apply   → register the job with your database`, opts.quiet);
   log(`  ${detected ? "3" : "4"}. npm run syncsuite:dry-run → preview what will be synced`, opts.quiet);
   log(`  ${detected ? "4" : "5"}. npm run syncsuite:sync    → run the sync`, opts.quiet);

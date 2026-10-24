@@ -51,7 +51,14 @@ export async function runSync(jobOrFile: string, options: SyncCliOptions): Promi
           }
         },
         error(event: string, data?: Record<string, unknown>) {
-          console.error(`  [Error] ${event}: ${data?.error ?? ""}`);
+          if (event === "run.finished") return;
+          const errVal = data?.error;
+          const msg = errVal instanceof Error
+            ? errVal.message
+            : typeof errVal === "object" && errVal !== null
+              ? (errVal as { message?: string }).message ?? JSON.stringify(errVal)
+              : String(errVal ?? "");
+          console.error(`  [Error] ${event}: ${msg}`);
         },
       };
 

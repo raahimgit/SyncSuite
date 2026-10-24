@@ -9,12 +9,14 @@ export interface PostgresDestinationConfig {
   connectionString: unknown;
   table: string;
   keyColumn?: string | string[];
+  autoCreateTable?: boolean;
 }
 
 export class PostgresDestination implements DestinationConnector {
   readonly type = "postgres";
   private readonly config: PostgresDestinationConfig;
   private readonly keyCols: string[];
+  private readonly autoCreateTable: boolean;
   private pool: pg.Pool | null = null;
 
   constructor(rawConfig: Record<string, unknown>) {
@@ -31,6 +33,7 @@ export class PostgresDestination implements DestinationConnector {
     if (this.keyCols.length === 0) {
       throw new SyncError("fatal", "postgres destination: keyColumn cannot be empty");
     }
+    this.autoCreateTable = (rawConfig.autoCreateTable as boolean | undefined) ?? true;
   }
 
   async open(signal: AbortSignal): Promise<void> {
@@ -109,7 +112,18 @@ export class PostgresDestination implements DestinationConnector {
 
       // rowCount is 1 if inserted or updated; 0 if unchanged (IS DISTINCT FROM matched nothing)
       return (res.rowCount ?? 0) > 0 ? { status: "written" } : { status: "unchanged" };
-    } catch (err) {
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string };
+      if (pgErr?.code === "42P01" && this.autoCreateTable) {
+        await this.ensureDestinationTable(quotedTable, cols, data);
+        const retryRes = await this.pool.query({ text: sql, values });
+        return (retryRes.rowCount ?? 0) > 0 ? { status: "written" } : { status: "unchanged" };
+      }
+      if (pgErr?.code === "42703" && this.autoCreateTable) {
+        await this.ensureDestinationColumns(quotedTable, cols, data);
+        const retryRes = await this.pool.query({ text: sql, values });
+        return (retryRes.rowCount ?? 0) > 0 ? { status: "written" } : { status: "unchanged" };
+      }
       if (signal.aborted) {
         throw signal.reason ?? new Error("write cancelled by signal");
       }
@@ -141,7 +155,6 @@ export class PostgresDestination implements DestinationConnector {
       values.push(val);
       whereClauses.push(`${quoteIdentifier(keyCol)} = $${i + 1}`);
     }
-
 
     const checkSql = `
       SELECT * FROM ${quotedTable}
@@ -187,11 +200,73 @@ export class PostgresDestination implements DestinationConnector {
         action: "unchanged",
         description: `Row in ${this.config.table} (key: ${req.key}) is identical`,
       };
-    } catch (err) {
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string };
+      if (pgErr?.code === "42P01") {
+        return {
+          action: "create",
+          description: `Destination table '${this.config.table}' will be auto-created and row inserted (key: ${req.key})`,
+        };
+      }
       return {
         action: "unknown",
         description: `Failed to inspect row in ${this.config.table}: ${classifyPgError(err, "plan").message}`,
       };
+    }
+  }
+
+  private async ensureDestinationTable(
+    quotedTable: string,
+    cols: string[],
+    sampleData: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.pool) return;
+    const colDefs: string[] = [];
+    for (const col of cols) {
+      const isPk = this.keyCols.includes(col);
+      const val = sampleData[col];
+      let type = "TEXT";
+      if (typeof val === "boolean") {
+        type = "BOOLEAN";
+      } else if (typeof val === "number") {
+        type = Number.isInteger(val) ? "BIGINT" : "DOUBLE PRECISION";
+      } else if (val instanceof Date) {
+        type = "TIMESTAMPTZ";
+      } else if (typeof val === "object" && val !== null) {
+        type = "JSONB";
+      } else if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)) {
+        type = "TIMESTAMPTZ";
+      }
+      colDefs.push(`${quoteIdentifier(col)} ${type}${isPk ? " NOT NULL" : ""}`);
+    }
+    const pkConstraint = `, PRIMARY KEY (${this.keyCols.map(quoteIdentifier).join(", ")})`;
+    const createSql = `CREATE TABLE IF NOT EXISTS ${quotedTable} (\n  ${colDefs.join(",\n  ")}${pkConstraint}\n);`;
+    await this.pool.query(createSql);
+  }
+
+  private async ensureDestinationColumns(
+    quotedTable: string,
+    cols: string[],
+    sampleData: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.pool) return;
+    for (const col of cols) {
+      const val = sampleData[col];
+      let type = "TEXT";
+      if (typeof val === "boolean") {
+        type = "BOOLEAN";
+      } else if (typeof val === "number") {
+        type = Number.isInteger(val) ? "BIGINT" : "DOUBLE PRECISION";
+      } else if (val instanceof Date) {
+        type = "TIMESTAMPTZ";
+      } else if (typeof val === "object" && val !== null) {
+        type = "JSONB";
+      } else if (typeof val === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)) {
+        type = "TIMESTAMPTZ";
+      }
+      await this.pool.query(
+        `ALTER TABLE ${quotedTable} ADD COLUMN IF NOT EXISTS ${quoteIdentifier(col)} ${type};`,
+      ).catch(() => {});
     }
   }
 

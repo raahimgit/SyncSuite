@@ -181,7 +181,75 @@ circuitBreaker:
 onRecordFailure: dead_letter
 `;
 
+export interface DynamicTableConfig {
+  table?: string;
+  keyColumn?: string;
+  cursorColumn?: string | null;
+  dbVarName?: string;
+  allTables?: string[];
+}
+
+export interface InitOptions {
+  format?: "yaml" | "json";
+  template?: "postgres-to-rest" | "postgres-to-postgres" | "postgres-to-s3";
+  force?: boolean;
+  tableConfig?: DynamicTableConfig;
+}
+
+export function buildDynamicPgToPgYaml(config: DynamicTableConfig): string {
+  const table = config.table ?? "my_table";
+  const keyCol = config.keyColumn ?? "id";
+  const cursorCol = config.cursorColumn ?? "updated_at";
+  const dbVar = config.dbVarName ?? "DATABASE_URL";
+
+  return `# SyncSuite Job Specification
+# Target: Auto-discovered table '${table}' -> '${table}_replica'
+# Auto-created by SyncSuite setup based on your database schema.
+version: 1
+name: sync-${table}-replica
+description: Incremental replication of ${table} to analytical replica
+
+source:
+  type: postgres
+  config:
+    connectionString:
+      $env: ${dbVar}
+    table: ${table}
+    keyColumn: ${keyCol}
+    cursorColumn: ${cursorCol}
+    batchSize: 200
+    safetyLagMs: 5000
+
+destination:
+  type: postgres
+  config:
+    connectionString:
+      $env: ${dbVar}
+    table: ${table}_replica
+    keyColumn: ${keyCol}
+
+transform:
+  - op: set
+    field: replicated_at
+    value: current_timestamp
+
+retry:
+  maxAttempts: 4
+  baseDelayMs: 500
+  maxDelayMs: 15000
+  jitter: full
+
+circuitBreaker:
+  maxConsecutiveFailures: 20
+
+onRecordFailure: dead_letter
+`;
+}
+
 export function generateJobTemplate(options: InitOptions = {}): string {
+  if (options.tableConfig?.table) {
+    return buildDynamicPgToPgYaml(options.tableConfig);
+  }
   if (options.template === "postgres-to-s3") return TEMPLATE_PG_TO_S3_YAML;
   if (options.template === "postgres-to-postgres") return TEMPLATE_PG_TO_PG_YAML;
   return TEMPLATE_PG_TO_REST_YAML;

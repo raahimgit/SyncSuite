@@ -69,8 +69,6 @@ describe("parseConnectionString", () => {
     expect(config.port).toBe(6543);
     expect(config.database).toBe("postgres");
     expect(config.ssl).toEqual({ rejectUnauthorized: false });
-    // Also ensures connectionString has properly URL-encoded credentials
-    expect(config.connectionString).toContain(":syncsuite%40386@aws-0-ap-northeast-1");
   });
 
   it("handles unencoded '#' character inside the password", () => {

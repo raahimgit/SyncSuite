@@ -124,23 +124,6 @@ export function parseConnectionString(rawUrl: string): PoolConfig {
   const rawPassword = password !== undefined ? decodeSafe(password) : undefined;
   const rawDatabase = database ? decodeSafe(database) : undefined;
 
-  // Build clean, normalized connectionString with properly escaped credentials
-  let normalizedUrl = `postgresql://`;
-  if (rawUser !== undefined) {
-    normalizedUrl += encodeURIComponent(rawUser);
-    if (rawPassword !== undefined) {
-      normalizedUrl += `:${encodeURIComponent(rawPassword)}`;
-    }
-    normalizedUrl += `@`;
-  }
-  normalizedUrl += `${host || "localhost"}:${port ?? 5432}`;
-  if (rawDatabase) {
-    normalizedUrl += `/${encodeURIComponent(rawDatabase)}`;
-  }
-  if (queryString) {
-    normalizedUrl += `?${queryString}`;
-  }
-
   const poolConfig: PoolConfig = {
     host: host || "localhost",
     port: port ?? 5432,
@@ -148,7 +131,11 @@ export function parseConnectionString(rawUrl: string): PoolConfig {
     user: rawUser,
     password: rawPassword,
     ssl,
-    connectionString: normalizedUrl,
+    // Pass search_path as a PostgreSQL startup parameter.
+    // This is included in the connection handshake, so Supavisor
+    // (transaction-mode pooler, port 6543) honours it properly —
+    // unlike a post-connection SET which is dropped between transactions.
+    options: "-c search_path=public",
   };
 
   return poolConfig;
@@ -194,6 +181,18 @@ export function createPool(options: CreatePoolOptions = {}): Pool {
   }
 
   const pool = new PgPool(poolConfig);
+
+  // Set search_path on every new client checkout.
+  // Supabase connection poolers (Supavisor) do not preserve the session's
+  // search_path between client checkouts. Without this, queries like
+  // SELECT * FROM orders fail with "relation does not exist" even when
+  // the table is in the public schema.
+  pool.on("connect", (client) => {
+    client.query("SET search_path = public").catch(() => {
+      // Non-fatal: best effort. If this fails we carry on — the query itself
+      // will fail with a clear schema error rather than a silent wrong result.
+    });
+  });
 
   pool.on("error", (err: Error) => {
     logger?.error("pg.pool_idle_client_error", {

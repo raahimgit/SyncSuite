@@ -35,8 +35,8 @@ program
   .option("--no-inject-scripts", "Skip injecting syncsuite:* scripts into package.json")
   .option("--force", "Overwrite files that already exist", false)
   .option("--quiet", "Suppress all output except errors", false)
-  .action((options: { template: string; jobFile: string; injectScripts: boolean; force: boolean; quiet: boolean }) => {
-    const code = runSetup({
+  .action(async (options: { template: string; jobFile: string; injectScripts: boolean; force: boolean; quiet: boolean }) => {
+    const code = await runSetup({
       template: options.template as "postgres-to-postgres" | "postgres-to-rest" | "postgres-to-s3",
       jobFile: options.jobFile,
       injectScripts: options.injectScripts,
