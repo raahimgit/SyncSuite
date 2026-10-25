@@ -33,5 +33,6 @@ export { SyncSuiteClient, SyncKitClient, SyncSuiteApiError } from "./client/inde
 export type { ClientOptions } from "./client/index.js";
 export { ExitCodes } from "./cli/exit-codes.js";
 export type { ExitCode } from "./cli/exit-codes.js";
+export { VERSION } from "./version.js";
 
 

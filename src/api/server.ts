@@ -13,6 +13,7 @@ import type {
 } from "./types.js";
 import type { RunResult } from "../core/runner.js";
 import { defaultMetrics } from "../core/metrics.js";
+import { VERSION } from "../version.js";
 
 export interface RunningApiServer {
   server: Server;
@@ -109,7 +110,7 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
           const health: HealthResponse = {
             status: "ok",
             database: "connected",
-            version: "0.0.0",
+            version: VERSION,
             uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
           };
           sendJson(res, 200, health);
@@ -117,11 +118,51 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
           const unhealthy: HealthResponse = {
             status: "error",
             database: "disconnected",
-            version: "0.0.0",
+            version: VERSION,
             uptimeSeconds: Math.floor((Date.now() - startTime) / 1000),
           };
           sendJson(res, 503, unhealthy);
         }
+        return;
+      }
+
+      if ((pathname === "/docs" || pathname === "/docs/") && method === "GET") {
+        const docsHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SyncSuite API Documentation</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    body { margin: 0; background: #fafafa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .topbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: '/openapi.json',
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIBundle.SwaggerUIStandalonePreset
+        ],
+        layout: "BaseLayout"
+      });
+    };
+  </script>
+</body>
+</html>`;
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(docsHtml);
         return;
       }
 

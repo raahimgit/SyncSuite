@@ -1,9 +1,11 @@
+import { VERSION } from "../version.js";
+
 export function getOpenApiSpec(): Record<string, unknown> {
   return {
     openapi: "3.1.0",
     info: {
       title: "SyncSuite API",
-      version: "0.0.0",
+      version: VERSION,
       description:
         "HTTP API for managing and executing incremental data synchronization jobs in SyncSuite.",
     },

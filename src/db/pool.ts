@@ -182,18 +182,6 @@ export function createPool(options: CreatePoolOptions = {}): Pool {
 
   const pool = new PgPool(poolConfig);
 
-  // Set search_path on every new client checkout.
-  // Supabase connection poolers (Supavisor) do not preserve the session's
-  // search_path between client checkouts. Without this, queries like
-  // SELECT * FROM orders fail with "relation does not exist" even when
-  // the table is in the public schema.
-  pool.on("connect", (client) => {
-    client.query("SET search_path = public").catch(() => {
-      // Non-fatal: best effort. If this fails we carry on — the query itself
-      // will fail with a clear schema error rather than a silent wrong result.
-    });
-  });
-
   pool.on("error", (err: Error) => {
     logger?.error("pg.pool_idle_client_error", {
       error: err.message,
