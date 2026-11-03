@@ -17,6 +17,7 @@
     "dist"
   ],
   "scripts": {
+    "prebuild": "node scripts/sync-version.js",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
