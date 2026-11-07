@@ -1,6 +1,6 @@
 {
   "name": "syncsuite",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Self-hostable incremental data synchronization engine with checkpoints, retries, rate limits and dead letters.",
   "license": "MIT",
   "type": "module",
