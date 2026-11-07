@@ -79,4 +79,15 @@ describe("API server (unit, no database needed)", () => {
     expect(ExitCodes.JOB_BUSY).toBe(5);
     expect(ExitCodes.INTERRUPTED).toBe(130);
   });
+
+  it("logo.png exists and is a valid PNG image", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const logoBuf = await readFile(new URL("../../logo.png", import.meta.url));
+    expect(logoBuf.length).toBeGreaterThan(0);
+    // PNG signature: 0x89 0x50 0x4E 0x47
+    expect(logoBuf[0]).toBe(0x89);
+    expect(logoBuf[1]).toBe(0x50);
+    expect(logoBuf[2]).toBe(0x4e);
+    expect(logoBuf[3]).toBe(0x47);
+  });
 });

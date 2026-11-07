@@ -14,7 +14,9 @@
     "synckit": "./dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "logo.png",
+    "assets"
   ],
   "scripts": {
     "prebuild": "node scripts/sync-version.js",

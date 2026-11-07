@@ -1,10 +1,21 @@
-# SyncSuite
+<p align="center">
+  <img src="logo.png" alt="SyncSuite Logo" width="180" />
+</p>
 
-[![CI](https://github.com/syncsuite/syncsuite/actions/workflows/ci.yml/badge.svg)](https://github.com/syncsuite/syncsuite/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](package.json)
+<h1 align="center">SyncSuite</h1>
 
-> **SyncSuite** (formerly referenced as SyncKit) is a self-hostable, production-ready incremental data synchronization engine built for reliable record synchronization between databases and external systems. It provides persisted checkpointing, token-bucket rate limiting, circuit breakers, idempotency ledgers, automatic retries with full jitter, SSRF guards, structured JSON logging with secret redaction, OpenAPI 3.1 endpoints, and a dead-letter recovery store.
+<p align="center">
+  <strong>Resilient, self-hostable incremental data synchronization engine for modern engineering teams.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/syncsuite/syncsuite/actions"><img src="https://github.com/syncsuite/syncsuite/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg" alt="Node.js Version" /></a>
+  <a href="https://www.npmjs.com/package/syncsuite"><img src="https://img.shields.io/npm/v/syncsuite.svg?color=blue" alt="npm version" /></a>
+</p>
+
+> **SyncSuite** is a self-hostable, production-ready incremental data synchronization engine built for reliable record synchronization between databases, object storage, and external systems. It provides persisted checkpointing, token-bucket rate limiting, circuit breakers, idempotency ledgers, automatic retries with full jitter, SSRF guards, structured JSON logging with secret redaction, OpenAPI 3.1 endpoints, and a dead-letter recovery store.
 
 ---
 
@@ -354,6 +365,30 @@ SyncSuite includes production-ready connectors out of the box with zero external
 | `rest` | Source & Destination | Webhooks, REST APIs, Microservices | SSRF guarded, Bearer / Basic / API-Key auth, retry headers |
 | `s3` | Destination | AWS S3, Cloudflare R2, MinIO, Wasabi | Zero-dependency AWS SigV4 signed PUT, JSON & NDJSON |
 
+#### Cloudflare R2 (Free Tier S3-Compatible Storage)
+
+Cloudflare R2 offers 10 GB/month storage and **zero egress bandwidth fees**. SyncSuite connects directly via S3 SigV4:
+
+```yaml
+version: 1
+name: postgres-to-cloudflare-r2
+source:
+  type: postgres
+  config:
+    connectionString: { "$env": "DATABASE_URL" }
+    table: orders
+destination:
+  type: s3
+  config:
+    bucket: my-r2-bucket
+    endpoint: "https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com"
+    region: auto
+    accessKeyId: { "$env": "R2_ACCESS_KEY_ID" }
+    secretAccessKey: { "$env": "R2_SECRET_ACCESS_KEY" }
+    prefix: "orders-archive/"
+    format: json
+```
+
 Custom connectors can be registered via `ConnectorRegistry`:
 
 ```typescript
@@ -412,9 +447,12 @@ All log messages redact:
 ## Security Model
 
 1. **SSRF Guard**: Pre-resolves DNS before requests, blocks private IPs (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopbacks (`127.0.0.0/8`), link-local (`169.254.0.0/16`), and pins sockets to the validated IP to block DNS rebinding TOCTOU attacks.
-2. **SQL Injection Guard**: All database queries use parameterized SQL. SQL identifiers are strictly validated against `/^[a-z_][a-z0-9_]{0,62}$/` and double-quoted.
-3. **Constant-Time Auth**: Bearer token authentication uses `crypto.timingSafeEqual` to avoid timing side-channels.
-4. **Dead-Letter Redaction**: Optional payload sanitization (`redactDeadLetterPayload: true`) masks sensitive fields before persisting failed records to disk.
+2. **SQL Injection Guard**: All database queries use parameterized SQL. SQL identifiers are strictly validated against `/^[a-zA-Z_][a-zA-Z0-9_]*$/` and double-quoted.
+3. **Payload & Memory Overflow Prevention**: Inbound REST API payloads are strictly capped at 2 MB to prevent Node.js heap exhaustion / OOM attacks, and outbound streaming responses enforce a 50 MB safety ceiling.
+4. **Schema & State Isolation**: All engine coordination tables (`jobs`, `leases`, `checkpoints`, `runs`, `dead_letters`, `delivery_ledger`) reside inside a dedicated PostgreSQL schema (default `synckit`), preventing accidental collisions or tampering with application tables.
+5. **Constant-Time Auth**: Bearer token authentication uses `crypto.timingSafeEqual` to avoid timing side-channels.
+6. **Dead-Letter Redaction**: Optional payload sanitization (`redactDeadLetterPayload: true`) masks sensitive fields before persisting failed records to disk.
+7. **Rate Limiting & Cascading Failure Circuit Breakers**: Configurable token-bucket limiters protect upstream and downstream APIs from quota exhaustion, while circuit breakers trip to abort execution before connection pools are starved.
 
 ---
 

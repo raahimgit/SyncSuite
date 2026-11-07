@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
 import { stringify as stringifyYaml } from "yaml";
 import { createCliContext, type CliContext } from "../cli/config.js";
@@ -57,8 +58,22 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
   async function parseBody<T>(req: IncomingMessage): Promise<T> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
-      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      let totalBytes = 0;
+      const MAX_BODY_SIZE = 2 * 1024 * 1024; // 2 MB limit to prevent memory exhaustion DoS
+
+      req.on("data", (chunk: Buffer) => {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_BODY_SIZE) {
+          req.destroy(new Error("PAYLOAD_TOO_LARGE"));
+          return;
+        }
+        chunks.push(chunk);
+      });
       req.on("end", () => {
+        if (totalBytes > MAX_BODY_SIZE) {
+          reject(new Error("PAYLOAD_TOO_LARGE"));
+          return;
+        }
         const raw = Buffer.concat(chunks).toString("utf8");
         if (!raw.trim()) {
           resolve({} as T);
@@ -70,7 +85,13 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
           reject(new Error("Malformed JSON body"));
         }
       });
-      req.on("error", reject);
+      req.on("error", (err) => {
+        if (err.message === "PAYLOAD_TOO_LARGE") {
+          reject(new Error("Request body too large (exceeds 2MB limit)"));
+        } else {
+          reject(err);
+        }
+      });
     });
   }
 
@@ -104,6 +125,23 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
       }
 
       // Public endpoints
+      if ((pathname === "/logo.png" || pathname === "/assets/logo.png") && method === "GET") {
+        try {
+          const logoPath = new URL("../../logo.png", import.meta.url);
+          const logoBuf = await readFile(logoPath);
+          res.writeHead(200, {
+            "Content-Type": "image/png",
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(logoBuf);
+          return;
+        } catch {
+          sendError(res, 404, "Logo not found");
+          return;
+        }
+      }
+
       if (pathname === "/health" && method === "GET") {
         try {
           await ctx.pool.query("SELECT 1");
@@ -133,13 +171,48 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SyncSuite API Documentation</title>
+  <link rel="icon" type="image/png" href="/logo.png" />
   <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
   <style>
     body { margin: 0; background: #fafafa; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     .topbar { display: none; }
+    .syncsuite-header {
+      background: #0f172a;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 2px solid #00d2ff;
+    }
+    .syncsuite-header img {
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      object-fit: contain;
+    }
+    .syncsuite-header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+    .syncsuite-header span {
+      background: rgba(0, 210, 255, 0.15);
+      color: #00d2ff;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
+  <div class="syncsuite-header">
+    <img src="/logo.png" alt="SyncSuite Logo" />
+    <h1>SyncSuite REST API</h1>
+    <span>v${VERSION}</span>
+  </div>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
@@ -483,7 +556,12 @@ export async function createApiServer(options: ApiServerOptions = {}): Promise<R
 
       sendError(res, 404, `Endpoint not found: ${method} ${pathname}`);
     } catch (err) {
-      sendError(res, 500, `Internal server error: ${err instanceof Error ? err.message : String(err)}`);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("too large") || msg.includes("PAYLOAD_TOO_LARGE")) {
+        sendError(res, 413, "Payload Too Large: request body exceeds 2MB limit");
+        return;
+      }
+      sendError(res, 500, `Internal server error: ${msg}`);
     }
   });
 

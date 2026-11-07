@@ -261,8 +261,15 @@ export function safeHttpRequest(
 
         const req = client.request(reqOptions, (res) => {
           const chunks: Buffer[] = [];
+          let totalBytes = 0;
+          const MAX_RESPONSE_BYTES = 50 * 1024 * 1024; // 50 MB response limit prevents runaway memory exhaustion
 
           res.on("data", (chunk) => {
+            totalBytes += chunk.length;
+            if (totalBytes > MAX_RESPONSE_BYTES) {
+              res.destroy(new SyncError("permanent", "response size exceeded 50MB safety limit"));
+              return;
+            }
             chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           });
 
