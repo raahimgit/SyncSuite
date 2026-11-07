@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/syncsuite/syncsuite/actions"><img src="https://github.com/syncsuite/syncsuite/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/raahimgit/SyncSuite/actions"><img src="https://github.com/raahimgit/SyncSuite/actions/workflows/ci.yml/" alt="CI" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg" alt="Node.js Version" /></a>
   <a href="https://www.npmjs.com/package/syncsuite"><img src="https://img.shields.io/npm/v/syncsuite.svg?color=blue" alt="npm version" /></a>
