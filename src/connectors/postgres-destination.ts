@@ -1,4 +1,4 @@
-import pg from "pg";
+import type pg from "pg";
 import { SyncError } from "../core/types.js";
 import type { DestinationConnector, PlannedWrite, WriteRequest, WriteResult } from "../core/types.js";
 import { resolveSecret } from "./secrets.js";

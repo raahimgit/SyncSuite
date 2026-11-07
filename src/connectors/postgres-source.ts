@@ -1,4 +1,4 @@
-import pg from "pg";
+import type pg from "pg";
 import { SyncError } from "../core/types.js";
 import type { Cursor, ReadBatch, SourceConnector, SourceRecord } from "../core/types.js";
 import { resolveSecret } from "./secrets.js";
