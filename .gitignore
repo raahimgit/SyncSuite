@@ -7,3 +7,31 @@ coverage
 *.log
 package-lock.json
 package-lock.json*
+
+# AI & Assistant prompts, context & scratch files
+.gemini/
+.claude/
+.cursor/
+.antigravity/
+.chat/
+*.prompt
+*.prompt.md
+*.ai.md
+scratch/
+scratch.*
+
+# Internal documentation & reference notes
+SyncSuite Overall Details.md
+*Details.md
+*Notes.md
+
+# IDE & Editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local scratch and test specs
+my-job.yaml
+syncsuite.yaml
+*.local.yaml
